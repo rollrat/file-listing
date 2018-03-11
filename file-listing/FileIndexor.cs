@@ -20,6 +20,8 @@ namespace file_listing
         List<Tuple<string, string>> error_list = new List<Tuple<string, string>>();
         string root_directory;
 
+        bool listing_files = false;
+        
         public string RootDirectory { get { return root_directory; } set { root_directory = value; } }
         public FileIndexorNode Node { get { return node?.Nodes?[0]; } }
         public int Count { get { return directory_list.Count; } }
@@ -36,45 +38,55 @@ namespace file_listing
         {
             root_directory = target_directory;
             node = new FileIndexorNode(target_directory, 0);
-            await Task.Run(() => listingFolder(target_directory));
+            await Task.Run(() => prelistingFolder(target_directory));
             await Task.Run(() => createNodes());
         }
 
         public async Task ListingDirectoryWithFilesAsync(string target_directory)
         {
-
+            listing_files = true;
+            await ListingDirectoryAsync(target_directory);
         }
 
         #region [--- Listing ---]
+
+        private void prelistingFolder(string path)
+        {
+            try
+            {
+                UInt64 folder_size = 0;
+
+                if (!OnlyListing)
+                    foreach (FileInfo f in new DirectoryInfo(path).GetFiles())
+                        folder_size += (UInt64)f.Length;
+
+                lock (directory_list)
+                {
+                    if (!path.EndsWith(@"\")) path += @"\";
+                    directory_list.Add(new Tuple<string, UInt64>(path, folder_size));
+                }
+
+                Parallel.ForEach(Directory.GetDirectories(path), n => listingFolder(n));
+            }
+            catch (Exception ex)
+            {
+                error_list.Add(new Tuple<string, string>(path, ex.ToString()));
+            }
+        }
 
         private void listingFolder(string path)
         {
             try
             {
-                if (!OnlyListing)
-                {
-                    UInt64 folder_size = 0;
+                UInt64 folder_size = 0;
 
+                if (!OnlyListing)
                     foreach (FileInfo f in new DirectoryInfo(path).GetFiles())
                         folder_size += (UInt64)f.Length;
 
-                    lock (directory_list)
-                    {
-                        if (path.EndsWith("\\"))
-                            directory_list.Add(new Tuple<string, UInt64>(path, folder_size));
-                        else
-                            directory_list.Add(new Tuple<string, UInt64>(path + "\\", folder_size));
-                    }
-                }
-                else
+                lock (directory_list)
                 {
-                    lock (directory_list)
-                    {
-                        if (path.EndsWith("\\"))
-                            directory_list.Add(new Tuple<string, UInt64>(path, 0));
-                        else
-                            directory_list.Add(new Tuple<string, UInt64>(path + "\\", 0));
-                    }
+                    directory_list.Add(new Tuple<string, UInt64>(path, folder_size));
                 }
 
                 Parallel.ForEach(Directory.GetDirectories(path), n => listingFolder(n));
@@ -90,7 +102,7 @@ namespace file_listing
         {
             for (; index < directory_list.Count - 1; index++)
             {
-                FileIndexorNode _node = new FileIndexorNode(directory_list[index].Item1, directory_list[index].Item2);
+                FileIndexorNode _node = new FileIndexorNode(directory_list[index].Item1, directory_list[index].Item2, listing_files);
                 if (directory_list[index + 1].Item1.Contains(directory_list[index].Item1))
                 {
                     node.AddItem(_node);
@@ -107,7 +119,7 @@ namespace file_listing
             {
                 if (directory_list[index].Item1.Contains(node.Path))
                 {
-                    FileIndexorNode m = new FileIndexorNode(directory_list[index].Item1, directory_list[index].Item2);
+                    FileIndexorNode m = new FileIndexorNode(directory_list[index].Item1, directory_list[index].Item2, listing_files);
                     node.AddItem(m);
                     if (index < directory_list.Count - 1 && 
                         directory_list[index + 1].Item1.Contains(directory_list[index].Item1))
@@ -126,7 +138,7 @@ namespace file_listing
         }
 
         #endregion
-
+        
         public FileIndexorNode GetPathNode(string path)
         {
             string[] seperated = path.Split('\\');

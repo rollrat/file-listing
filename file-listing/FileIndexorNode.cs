@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace file_listing
 {
@@ -19,7 +20,7 @@ namespace file_listing
         UInt64 size;
         UInt64 this_size;
         List<FileIndexorNode> nodes = new List<FileIndexorNode>();
-        List<FileInfo> files = new List<FileInfo>();
+        List<FileInfo> files;
 
         public string Path { get { return now_path; } }
         public UInt64 Size { get { return size; } set { size = value; } }
@@ -27,10 +28,19 @@ namespace file_listing
         public List<FileIndexorNode> Nodes { get { return nodes; } }
         public List<FileInfo> Files { get { return files; } }
 
-        public FileIndexorNode(string path, UInt64 size)
+        public FileIndexorNode(string path, UInt64 size, bool listing_files = false)
         {
             now_path = path;
             this.this_size = this.size = size;
+            if (listing_files)
+            {
+                files = new List<FileInfo>();
+                Task.Run(() =>
+                {
+                    foreach (FileInfo f in new DirectoryInfo(path).GetFiles())
+                        files.Add(f);
+                });
+            }
         }
 
         public void AddItem(FileIndexorNode node)
