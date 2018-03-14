@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace file_listing
@@ -37,8 +38,9 @@ namespace file_listing
         public async Task ListingDirectoryAsync(string target_directory)
         {
             root_directory = target_directory;
-            node = new FileIndexorNode(target_directory, 0);
             await Task.Run(() => prelistingFolder(target_directory));
+            directory_list.Sort();
+            node = new FileIndexorNode(target_directory, 0);
             await Task.Run(() => createNodes());
         }
 
@@ -60,9 +62,10 @@ namespace file_listing
                     foreach (FileInfo f in new DirectoryInfo(path).GetFiles())
                         folder_size += (UInt64)f.Length;
 
+                if (!path.EndsWith("\\")) path = path + "\\";
+
                 lock (directory_list)
                 {
-                    if (!path.EndsWith(@"\")) path += @"\";
                     directory_list.Add(new Tuple<string, UInt64>(path, folder_size));
                 }
 
@@ -86,7 +89,7 @@ namespace file_listing
 
                 lock (directory_list)
                 {
-                    directory_list.Add(new Tuple<string, UInt64>(path, folder_size));
+                    directory_list.Add(new Tuple<string, UInt64>(path + "\\", folder_size));
                 }
 
                 Parallel.ForEach(Directory.GetDirectories(path), n => listingFolder(n));
@@ -117,17 +120,17 @@ namespace file_listing
         {
             for (; index < directory_list.Count; index++)
             {
-                if (directory_list[index].Item1.Contains(node.Path))
+                if (directory_list[index].Item1.Contains(parent_node.Path))
                 {
                     FileIndexorNode m = new FileIndexorNode(directory_list[index].Item1, directory_list[index].Item2, listing_files);
-                    node.AddItem(m);
+                    parent_node.AddItem(m);
                     if (index < directory_list.Count - 1 && 
                         directory_list[index + 1].Item1.Contains(directory_list[index].Item1))
                     {
                         index++;
                         createNodesRecursize(ref m);
                     }
-                    node.Size += m.Size;
+                    parent_node.Size += m.Size;
                 }
                 else
                 {
